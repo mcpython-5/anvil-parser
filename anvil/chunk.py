@@ -6,9 +6,99 @@ from .errors import OutOfBoundsCoordinates
 import math
 
 
+# The id -> name map for biomes as of 1.16.3
+# Since 1.16.2, there is the possibility for custom biomes, which are, by the nature of them, not listed here [and we have no way to read them
+#    without the complete save files]
+BIOME_IDS = {
+    0: "ocean",
+    1: "plains",
+    2: "dessert",
+    3: "mountains",
+    4: "forest",
+    5: "taiga",
+    6: "swamp",
+    7: "river",
+    8: "nether_wastes",
+    9: "the_end",
+    10: "frozen_ocean",
+    11: "frozen_river",
+    12: "snowy_tundra",
+    13: "snowy_mountains",
+    14: "mushroom_fields",
+    15: "mushroom_fields_shore",
+    16: "beach",
+    17: "dessert_hills",
+    18: "wooded_hills",
+    19: "taiga_hills",
+    20: "mountain_edge",
+    21: "jungle",
+    22: "jungle_hills",
+    23: "jungle_edge",
+    24: "deep_ocean",
+    25: "stone_shore",
+    26: "snowy_beach",
+    27: "birch_forest",
+    28: "birch_forest_hills",
+    29: "dark_forest",
+    30: "snowy_taiga",
+    31: "snowy_taiga_hills",
+    32: "giant_tree_taiga",
+    33: "giant_tree_taiga_hills",
+    34: "wooded_mountains",
+    35: "savanna",
+    36: "savanna_plateau",
+    37: "badlands",
+    38: "wooded_badlands_plateau",
+    39: "badlands_plateau",
+    40: "small_end_islands",
+    41: "end_midlands",
+    42: "end_highlands",
+    43: "end_barrens",
+    44: "warm_ocean",
+    45: "lukewarm_ocean",
+    46: "cold_ocean",
+    47: "deep_warm_ocean",
+    48: "deep_lukewarm_ocean",
+    49: "deep_cold_ocean",
+    127: "the_void",
+    129: "sunflower_plains",
+    130: "desert_lakes",
+    131: "gravelly_mountains",
+    132: "flower_forest",
+    133: "taiga_mountains",
+    134: "swamp_hills",
+    140: "ice_spikes",
+    149: "modified_jungle",
+    151: "modified_jungle_edge",
+    155: "tall_birch_forest",
+    156: "tall_birch_hills",
+    157: "dark_forest_hills",
+    158: "snowy_taiga_mountains",
+    160: "giant_spruce_taiga",
+    161: "giant_spruce_taiga_hills",
+    162: "modified_gravelly_mountains",
+    163: "shattered_savanna",
+    164: "shattered_savanna_plateau",
+    165: "eroded_badlands",
+    166: "modified_wooded_badlands_plateau",
+    167: "modified_badlands_plateau",
+    168: "bamboo_jungle",
+    169: "bamboo_jungle_hills",
+    170: "soul_sand_valley",
+    171: "crimson_forest",
+    172: "warped_forest",
+    173: "basalt_deltas"
+}
+
+
 # This version removes block state value stretching from the storage
 # so a block value isn't in multiple elements of the array
 _VERSION_20w17a = 2529
+
+
+# This version changes how the biome data is stored from an 2d map to an 3d map
+# so biomes may change horizontally
+_VERSION_19w36a = 2203
 
 # This is the version where "The Flattening" (https://minecraft.gamepedia.com/Java_Edition_1.13/Flattening) happened
 # where blocks went from numeric ids to namespaced ids (namespace:block_id)
@@ -338,6 +428,51 @@ class Chunk:
         for section in range(16):
             for block in self.stream_blocks(section=section):
                 yield block
+
+    def get_raw_biome_at(self, position: tuple) -> int:
+        """
+        Returns the numerical id of the biome at the selected position in the chunk
+
+        Parameters
+        ----------
+        position
+            the position to check on. Depending on which format stored in, this may be an two-element or three-element tuple specifying where in the
+            biome-array to look at. The critical version was 19w36a [version id: 2203] introducing the new 3d-storage for biomes.
+            When using an 3-length-tuple on an version prior to 19w36a, only the first and last elements are used. If using an 2d tuple on an version post to 19w36a,
+            an OutOfBoundsCoordinates exception is raised
+
+        :rtype: :class:`int
+        """
+        if len(position) == 2 or self.version < _VERSION_19w36a:
+            x, *_, z = position
+            return self.data["Biomes"][x % 16 + z % 16 * 16]
+        elif len(position) == 3:
+            x, y, z = position
+            x %= 16
+            z %= 16
+            y %= 256
+            return self.data["Biomes"][x+z*4+y*16]
+        else:
+            raise OutOfBoundsCoordinates()
+
+    def get_biome_at(self, position: tuple) -> Union[str, int]:
+        """
+        Returns the default name (or the id if no name is found) of the biome at the selected position in the chunk
+
+        Parameters
+        ----------
+        position
+            the position to check on. Depending on which format stored in, this may be an two-element or three-element tuple specifying where in the
+            biome-array to look at. The critical version was 19w36a [version id: 2203] introducing the new 3d-storage for biomes.
+            When using an 3-length-tuple on an version prior to 19w36a, only the first and last elements are used. If using an 2d tuple on an version post to 19w36a,
+            an OutOfBoundsCoordinates exception is raised
+
+        :rtype: :class:`str or :class:´int
+        """
+        biome_id = self.get_raw_biome_at(position)
+        if biome_id not in BIOME_IDS:
+            return biome_id
+        return BIOME_IDS[biome_id]
 
     @classmethod
     def from_region(cls, region: Union[str, Region], chunkX: int, chunkZ: int):
